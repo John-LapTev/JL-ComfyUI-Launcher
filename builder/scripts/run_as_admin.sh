@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Переходим в директорию скрипта
+cd "$(dirname "$0")"
+
 # Проверяем права администратора
 if [ "$EUID" -ne 0 ]; then 
     echo "This script requires administrator rights."
