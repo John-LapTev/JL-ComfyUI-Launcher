@@ -21,6 +21,9 @@ export type Config = {
         civitai: {
             apikey: string
         }
+        huggingface: {
+            token: string
+        }
     }
 }
 

@@ -17,14 +17,40 @@
     </style>
     <script type="text/javascript">
         document.addEventListener("DOMContentLoaded", function() {
-            // Get the current URL's pathname
             var currentPath = window.location.pathname;
-            // Ensure it ends with a "/"
             if (!currentPath.endsWith('/')) {
                 currentPath += '/';
             }
-            // Set the iframe src to currentPath + "comfyui_interface"
-            document.getElementById('comfyui-iframe').src = currentPath + "comfyui_interface";
+            
+            const iframe = document.getElementById('comfyui-iframe');
+            iframe.src = currentPath + "comfyui_interface";
+
+            iframe.addEventListener('load', function() {
+                setTimeout(function() {
+                    try {
+                        const iframeWindow = iframe.contentWindow;
+                        if (iframeWindow && iframeWindow.app) {
+                            // Очищаем состояние перед загрузкой нового workflow
+                            iframeWindow.app.clean();
+                            iframeWindow.app.graph.clear();
+                            
+                            // Загружаем новый workflow
+                            fetch(currentPath + 'scripts/defaultGraph.js?_=' + new Date().getTime())
+                                .then(response => response.text())
+                                .then(text => {
+                                    const match = text.match(/export const defaultGraph = (\{[\s\S]*\});/);
+                                    if (match) {
+                                        const workflowData = JSON.parse(match[1]);
+                                        iframeWindow.app.loadGraphData(workflowData);
+                                    }
+                                })
+                                .catch(error => console.error("Error loading workflow:", error));
+                        }
+                    } catch (e) {
+                        console.error("Error accessing iframe content:", e);
+                    }
+                }, 2000);
+            });
         });
     </script>
 </head>

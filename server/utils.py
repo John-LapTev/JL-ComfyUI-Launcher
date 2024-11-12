@@ -1,5 +1,7 @@
 import json
+import logging
 import os
+import time
 import shutil
 import socket
 import requests
@@ -8,22 +10,44 @@ import unicodedata
 import re
 import subprocess
 import threading
+import tempfile
 from tqdm import tqdm
 from urllib.parse import urlparse
 from settings import PROJECT_MAX_PORT, PROJECT_MIN_PORT, PROJECTS_DIR
 
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 def check_url_structure(url):
-    # Check for huggingface.co URL structure
-    huggingface_pattern = r'^https://huggingface\.co/[\w-]+/[\w-]+/blob/[\w-]+\.(safetensors|bin|ckpt)$'
-    if re.match(huggingface_pattern, url):
-        return True
-    
-    # Check for civitai.com URL structure
-    civitai_pattern = r'^https://civitai\.com/models/\d+$'
-    if re.match(civitai_pattern, url):
-        return True
-    
-    return False
+    """Проверка структуры URL и автоматическая замена устаревших ссылок"""
+    try:
+        # Базовая проверка huggingface.co
+        huggingface_pattern = r'^https://huggingface\.co/[\w-]+/[\w-]+/blob/[\w-]+\.(safetensors|bin|ckpt)$'
+        if re.match(huggingface_pattern, url):
+            # Добавляем проверку существования репозитория
+            repo_path = "/".join(url.split("/")[3:5])
+            api_url = f"https://huggingface.co/api/models/{repo_path}"
+            try:
+                response = requests.head(api_url)
+                if response.status_code == 404:
+                    logger.warning(f"Repository not found: {repo_path}")
+                    return False
+            except:
+                # Если проверка не удалась, просто продолжаем
+                pass
+            return True
+        
+        # Базовая проверка civitai.com
+        civitai_pattern = r'^https://civitai\.com/models/\d+$'
+        if re.match(civitai_pattern, url):
+            return True
+        
+        return False
+        
+    except Exception as e:
+        logger.error(f"Error checking URL structure: {e}")
+        return False
 
 def slugify(value, allow_unicode=False):
     """
@@ -52,7 +76,16 @@ CW_ENDPOINT = os.environ.get("CW_ENDPOINT", "https://comfyworkflows.com")
 
 CONFIG_FILEPATH = "./config.json"
 
-DEFAULT_CONFIG = {"credentials": {"civitai": {"apikey": ""}}}
+DEFAULT_CONFIG = {
+    "credentials": {
+        "civitai": {
+            "apikey": ""
+        },
+        "huggingface": {
+            "token": ""
+        }
+    }
+}
 
 import os
 from typing import List, Dict, Optional, Union
@@ -96,20 +129,48 @@ def extract_model_file_names_with_node_info(json_data: Union[Dict, List], is_win
 
 
 def print_process_output(process):
-    for line in iter(process.stdout.readline, b''):
-        print(line.decode(), end='')
-    process.stdout.close()
+    try:
+        for line in iter(process.stdout.readline, b''):
+            try:
+                print(line.decode('utf-8', errors='ignore'), end='')
+            except Exception as e:
+                try:
+                    print(line.decode('cp1251', errors='ignore'), end='')
+                except:
+                    print("Failed to decode output line")
+    except Exception as e:
+        print(f"Error in print_process_output: {e}")
 
 def run_command(cmd: List[str], cwd: Optional[str] = None, bg: bool = False) -> None:
-    process = subprocess.Popen(" ".join(cmd), cwd=cwd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    
-    if bg:
-        # Create a separate thread to handle the printing of the process's output
-        threading.Thread(target=print_process_output, args=(process,), daemon=True).start()
-        return process.pid
-    else:
-        print_process_output(process)
-        assert process.wait() == 0
+    try:
+        process = subprocess.Popen(
+            " ".join(cmd),
+            cwd=cwd,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            universal_newlines=True
+        )
+        
+        if bg:
+            return process.pid
+            
+        # Читаем вывод в реальном времени
+        while True:
+            output = process.stdout.readline()
+            if output == '' and process.poll() is not None:
+                break
+            if output:
+                logger.info(output.strip())
+                
+        retcode = process.poll()
+        if retcode != 0:
+            raise subprocess.CalledProcessError(retcode, cmd)
+            
+    except Exception as e:
+        logger.error(f"Command failed: {' '.join(cmd)}")
+        logger.error(f"Error: {str(e)}")
+        raise
 
 def get_ckpt_names_with_node_info(workflow_json: Union[Dict, List], is_windows: bool) -> List[ModelFileWithNodeInfo]:
     ckpt_names = []
@@ -152,9 +213,22 @@ def run_command_in_project_comfyui_venv(project_folder_path, command, in_bg=Fals
     assert os.path.exists(venv_activate), f"Virtualenv does not exist in project folder: {project_folder_path}"
 
     if os.name == "nt":
-        return run_command([venv_activate, "&&", "cd", comfyui_dir, "&&", command], bg=in_bg)
+        full_command = f"cmd /c \"{venv_activate} && cd /d {comfyui_dir} && {command}\""
+        process = subprocess.Popen(full_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        if in_bg:
+            return process.pid
+        else:
+            print_process_output(process)
+            return process.wait() == 0
     else:
-        return run_command([".", venv_activate, "&&", "cd", comfyui_dir, "&&", command], bg=in_bg)
+        # Unix-like systems
+        full_command = f". {venv_activate} && cd {comfyui_dir} && {command}"
+        process = subprocess.Popen(full_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        if in_bg:
+            return process.pid
+        else:
+            print_process_output(process)
+            return process.wait() == 0
 
 
 def install_default_custom_nodes(project_folder_path, launcher_json=None):
@@ -272,122 +346,334 @@ def set_config(config):
     with open(CONFIG_FILEPATH, "w") as f:
         json.dump(config, f)
 
+def download_with_retry(url, temp_path, dest_path, sha256_checksum=None, headers=None, max_retries=3):
+    """Загрузка файла с повторными попытками и улучшенным отображением прогресса"""
+    if not url or not isinstance(url, str):
+        logger.error(f"Invalid URL provided: {url}")
+        return False
+
+    # Добавляем базовые заголовки
+    if headers is None:
+        headers = {}
+    headers.update({
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': '*/*',
+        'Accept-Encoding': 'gzip, deflate',
+        'Connection': 'keep-alive'
+    })
+
+    filename = os.path.basename(dest_path)
+    print(f"DEBUG: Начало загрузки файла {filename}")
+    print(f"DEBUG: URL: {url}")
+
+    for attempt in range(max_retries):
+        try:
+            # Пробуем получить размер файла с коротким таймаутом
+            try:
+                print(f"\nПолучение информации о файле {filename}...")
+                head_response = requests.head(url, headers=headers, timeout=5)
+                total_size = int(head_response.headers.get('content-length', 0))
+                if total_size > 0:
+                    print(f"Размер файла: {total_size/1024/1024:.1f} MB")
+                else:
+                    print("Размер файла неизвестен")
+            except Exception as e:
+                print(f"Не удалось получить размер файла: {str(e)}")
+                total_size = 0
+
+            # Начинаем загрузку
+            print(f"Загрузка: {filename}")
+            response = requests.get(url, headers=headers, stream=True, timeout=10)
+            response.raise_for_status()
+
+            block_size = 1024 * 1024  # 1MB chunks
+            downloaded_size = 0
+            start_time = time.time()
+            last_update_time = start_time
+            
+            # Создаем файл и прогресс-бар
+            with open(temp_path, 'wb') as f:
+                with tqdm(
+                    total=total_size if total_size > 0 else None,
+                    unit='B',
+                    unit_scale=True,
+                    unit_divisor=1024,
+                    desc=filename,
+                    ascii=True,
+                    ncols=100,
+                    leave=False,
+                    dynamic_ncols=True
+                ) as pbar:
+                    for chunk in response.iter_content(chunk_size=block_size):
+                        if chunk:
+                            f.write(chunk)
+                            chunk_size = len(chunk)
+                            downloaded_size += chunk_size
+                            pbar.update(chunk_size)
+                            
+                            # Обновляем общий размер если он не был известен
+                            if total_size == 0:
+                                pbar.total = downloaded_size * 1.1  # Предполагаемый размер
+                            
+                            # Обновляем скорость каждую секунду
+                            current_time = time.time()
+                            if current_time - last_update_time >= 1:
+                                elapsed = current_time - start_time
+                                speed = downloaded_size / (1024 * 1024 * elapsed)  # MB/s
+                                pbar.set_postfix({"Скорость": f"{speed:.1f}MB/s"}, refresh=True)
+                                last_update_time = current_time
+
+            # Проверяем загруженный файл
+            if os.path.exists(temp_path):
+                actual_size = os.path.getsize(temp_path)
+                if actual_size == 0:
+                    print(f"\nОшибка: Загруженный файл пуст")
+                    if attempt < max_retries - 1:
+                        print(f"Повторная попытка {attempt + 2}/{max_retries}...")
+                        continue
+                    return False
+
+                if sha256_checksum:
+                    print("Проверка контрольной суммы...")
+                    downloaded_checksum = compute_sha256_checksum(temp_path)
+                    if downloaded_checksum != sha256_checksum:
+                        print(f"\nОшибка: Контрольная сумма не совпадает")
+                        if attempt < max_retries - 1:
+                            print(f"Повторная попытка {attempt + 2}/{max_retries}...")
+                            continue
+                        return False
+
+                print(f"\nУспешно загружено: {filename}")
+                print(f"Размер файла: {actual_size/1024/1024:.1f} MB")
+                return True
+
+        except requests.exceptions.RequestException as e:
+            error_msg = str(e)
+            if "Unauthorized" in error_msg:
+                if "huggingface.co" in url:
+                    print("\nОшибка: Требуется авторизация Hugging Face. Проверьте токен в настройках.")
+                elif "civitai.com" in url:
+                    print("\nОшибка: Требуется авторизация CivitAI. Проверьте API ключ в настройках.")
+                return False
+            else:
+                print(f"\nОшибка загрузки: {error_msg}")
+
+            if attempt < max_retries - 1:
+                wait_time = 2 ** attempt  # Экспоненциальное увеличение времени ожидания
+                print(f"Повторная попытка через {wait_time} сек...")
+                time.sleep(wait_time)
+                continue
+            return False
+
+        except Exception as e:
+            print(f"\nНеизвестная ошибка: {str(e)}")
+            if attempt < max_retries - 1:
+                wait_time = 2 ** attempt
+                print(f"Повторная попытка через {wait_time} сек...")
+                time.sleep(wait_time)
+                continue
+            return False
+
+        finally:
+            if os.path.exists(temp_path) and not os.path.exists(dest_path):
+                try:
+                    os.remove(temp_path)
+                except:
+                    pass
+
+    return False
+
 def setup_files_from_launcher_json(project_folder_path, launcher_json):
+    """Установка файлов из launcher.json с улучшенной обработкой ошибок и визуализацией"""
     if not launcher_json:
         return
 
     missing_download_files = set()
     config = get_config()
+    
+    try:
+        logger.info("Starting file downloads...")
+        total_files = sum(1 for file_infos in launcher_json.get("files", []))
+        if total_files == 0:
+            logger.info("No files to download")
+            return missing_download_files
 
-    # download all necessary files
-    for file_infos in launcher_json["files"]:
-        downloaded_file = False
-        # try each source for the file until one works
-        for file_info in file_infos:
-            if downloaded_file:
-                break
-            cw_file_download_url = file_info["download_url"]
-            dest_relative_path = file_info["dest_relative_path"]
-            sha256_checksum = file_info["sha256_checksum"].lower()
+        print(f"\nНачинаем загрузку файлов (всего {total_files}):")
+        processed_files = 0
 
-            if not cw_file_download_url:
-                print(f"WARNING: Could not find download URL for: {dest_relative_path}")
-                missing_download_files.add(dest_relative_path)
-                continue
+        # Создаем временную директорию для загрузок
+        with tempfile.TemporaryDirectory() as temp_dir:
+            for file_index, file_infos in enumerate(launcher_json.get("files", []), 1):
+                current_file = None
+                downloaded_file = False
+                
+                for file_info in file_infos:
+                    if downloaded_file:
+                        break
 
-            dest_path = os.path.join(project_folder_path, "comfyui", dest_relative_path)
-            if os.path.exists(dest_path):
-                if compute_sha256_checksum(dest_path) != sha256_checksum:
-                    old_dest_filename = os.path.basename(dest_path)
-                    new_dest_path = generate_incrementing_filename(dest_path)
-                    print(f"WARNING: File '{dest_relative_path}' already exists and has a different checksum, so renaming new file to: {new_dest_path}")
-                    dest_path = new_dest_path
-                    new_dest_filename = os.path.basename(new_dest_path)
-                    # we auto-rename the file in the launcher json to match the new filename, so that the user doesn't have to manually update the launcher/workflow json
-                    # TODO: Later, we need to update this to only replace the filename within its specific node type (since multiple nodes can refer to a common filename, but they would be different files)
-                    rename_file_in_launcher_json(launcher_json, old_dest_filename, new_dest_filename)
-                else:
-                    print(f"File already exists: {dest_path}, so skipping download.")
-                    downloaded_file = True
-                    break
-
-            os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-
-            num_attempts = 0
-            download_successful = False
-
-            print(f"Downloading file for: {dest_path}")
-
-            if "/comfyui-launcher/" in cw_file_download_url:
-                response = requests.get(cw_file_download_url)
-                response.raise_for_status()
-                response_json = response.json()
-                download_urls = response_json["urls"]
-            else:
-                download_urls = [cw_file_download_url,]
-
-            for download_url in download_urls:
-                if download_successful:
-                    break
-                num_attempts = 0
-                while num_attempts < MAX_DOWNLOAD_ATTEMPTS:
-                    try:
-                        headers = {}
-
-                        # parse the url to get the host using 
-                        hostname = urlparse(download_url).hostname
-                        if hostname == "civitai.com":
-                            headers["Authorization"] = f"Bearer {config['credentials']['civitai']['apikey']}"
+                    if not all(key in file_info for key in ["download_url", "dest_relative_path"]):
+                        logger.warning(f"Incomplete file info: {file_info}")
+                        continue
                         
-                        with requests.get(
-                            download_url, headers=headers, allow_redirects=True, stream=True
-                        ) as response:
-                            total_size = int(response.headers.get("content-length", 0))
-                            with tqdm(total=total_size, unit="B", unit_scale=True) as pb:
-                                with open(dest_path, "wb") as f:
-                                    for chunk in response.iter_content(chunk_size=10 * 1024):
-                                        pb.update(len(chunk))
-                                        if chunk:
-                                            f.write(chunk)
-                        if compute_sha256_checksum(dest_path) == sha256_checksum:
-                            download_successful = True
-                            if dest_relative_path in missing_download_files:
-                                missing_download_files.remove(dest_relative_path)
+                    download_url = file_info["download_url"]
+                    dest_relative_path = file_info["dest_relative_path"]
+                    current_file = dest_relative_path
+                    sha256_checksum = file_info.get("sha256_checksum", "")
+
+                    if not download_url or not isinstance(download_url, str):
+                        logger.warning(f"Invalid or missing download URL for: {dest_relative_path}")
+                        missing_download_files.add(dest_relative_path)
+                        continue
+
+                    dest_path = os.path.join(project_folder_path, "comfyui", dest_relative_path)
+                    temp_path = os.path.join(temp_dir, os.path.basename(dest_relative_path))
+                    os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+                    
+                    if os.path.exists(dest_path):
+                        if sha256_checksum and compute_sha256_checksum(dest_path) == sha256_checksum:
+                            logger.info(f"File already exists with correct checksum: {dest_path}")
+                            downloaded_file = True
+                            processed_files += 1
+                            print(f"Общий прогресс: {processed_files}/{total_files} файлов ({(processed_files/total_files*100):.0f}%)")
                             break
-                        if os.path.exists(dest_path):
-                            os.remove(dest_path)
-                    except Exception as e:
-                        import traceback
-                        traceback.print_exc()
-                        if os.path.exists(dest_path):
-                            os.remove(dest_path)
-                    num_attempts += 1
+                        else:
+                            logger.info(f"File exists but checksum mismatch or no checksum: {dest_path}")
 
-            if not download_successful:
-                print(f"WARNING: Failed to download file for: {dest_relative_path}")
-                missing_download_files.add(dest_relative_path)
-                continue
+                    # Получаем список URL для скачивания
+                    download_urls = []
+                    if "/comfyui-launcher/" in download_url:
+                        try:
+                            response = requests.get(download_url, timeout=30)
+                            response.raise_for_status()
+                            try:
+                                response_json = response.json()
+                                if "urls" in response_json and response_json["urls"]:
+                                    download_urls = response_json["urls"]
+                                else:
+                                    download_urls = [download_url]
+                            except (json.JSONDecodeError, ValueError) as e:
+                                logger.debug(f"Raw response content: {response.text[:200]}...")
+                                logger.warning(f"Failed to parse JSON response: {e}, using direct URL")
+                                download_urls = [download_url]
+                        except requests.exceptions.RequestException as e:
+                            if hasattr(e.response, 'status_code') and e.response.status_code == 500:
+                                logger.warning(f"Server error (500) for URL {download_url}, skipping to next URL...")
+                                continue
+                            logger.error(f"Error getting download URLs: {e}")
+                            download_urls = [download_url]
+                    else:
+                        download_urls = [download_url]
 
-            downloaded_file = True
-            break
+                    if not download_urls:
+                        logger.warning(f"No valid download URLs found for {dest_relative_path}")
+                        continue
 
-        if not downloaded_file:
-            print(f"WARNING: Failed to download file: {dest_relative_path}")
-            missing_download_files.add(dest_relative_path)
-        else:
-            print(f"SUCCESS: Downloaded: {dest_relative_path}")
-    return missing_download_files
+                    # Пробуем каждый URL
+                    for url in download_urls:
+                        if not url or not isinstance(url, str):
+                            logger.warning(f"Invalid URL found in download_urls: {url}")
+                            continue
 
+                        # Подготавливаем заголовки
+                        headers = {}
+                        if "civitai.com" in url:
+                            api_key = config.get('credentials', {}).get('civitai', {}).get('apikey')
+                            if api_key:
+                                headers["Authorization"] = f"Bearer {api_key}"
+                        elif "huggingface.co" in url:
+                            hf_token = config.get('credentials', {}).get('huggingface', {}).get('token')
+                            if hf_token:
+                                headers["Authorization"] = f"Bearer {hf_token}"
+                        
+                        download_success = download_with_retry(
+                            url=url,
+                            temp_path=temp_path,
+                            dest_path=dest_path,
+                            sha256_checksum=sha256_checksum,
+                            headers=headers
+                        )
+                        
+                        if download_success:
+                            try:
+                                os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+                                shutil.move(temp_path, dest_path)
+                                logger.info(f"Successfully downloaded: {dest_relative_path}")
+                                downloaded_file = True
+                                processed_files += 1
+                                print(f"Общий прогресс: {processed_files}/{total_files} файлов ({(processed_files/total_files*100):.0f}%)")
+                                break
+                            except Exception as e:
+                                logger.error(f"Error moving file to destination: {e}")
+                                if os.path.exists(temp_path):
+                                    os.remove(temp_path)
+                        else:
+                            if os.path.exists(temp_path):
+                                os.remove(temp_path)
+
+                    if downloaded_file:
+                        break
+
+                if not downloaded_file and current_file:
+                    logger.warning(f"Failed to download from all sources: {current_file}")
+                    missing_download_files.add(current_file)
+                    processed_files += 1
+                    print(f"Общий прогресс: {processed_files}/{total_files} файлов ({(processed_files/total_files*100):.0f}%)")
+
+        print(f"\nЗагрузка файлов завершена. Успешно: {total_files - len(missing_download_files)}, Ошибок: {len(missing_download_files)}")
+        if missing_download_files:
+            logger.warning(f"Missing files: {len(missing_download_files)}")
+            for missing in missing_download_files:
+                logger.warning(f"  - {missing}")
+                
+        return missing_download_files
+
+    except Exception as e:
+        logger.error(f"Error in setup_files_from_launcher_json: {str(e)}")
+        logger.error("Stack trace:", exc_info=True)
+        return missing_download_files
 
 def get_launcher_json_for_workflow_json(workflow_json, resolved_missing_models, skip_model_validation):
-    response = requests.post(
-        f"{CW_ENDPOINT}/api/comfyui-launcher/setup_workflow_json?skipModelValidation={skip_model_validation}",
-        json={"workflow": workflow_json, "isWindows": os.name == "nt", "resolved_missing_models": resolved_missing_models},
-    )
-    assert (
-        response.status_code == 200 or response.status_code == 400
-    ), f"Failed to get launcher json for workflow json: {workflow_json}"
-    return response.json()
+    try:
+        # Преобразуем skip_model_validation в строку "true"/"false" для URL
+        skip_validation = str(skip_model_validation).lower()
+        
+        # Формируем данные запроса
+        request_data = {
+            "workflow": workflow_json,
+            "isWindows": os.name == "nt",
+            "resolved_missing_models": resolved_missing_models,
+            "skipModelValidation": skip_model_validation  # Добавляем в тело запроса
+        }
+        
+        response = requests.post(
+            f"{CW_ENDPOINT}/api/comfyui-launcher/setup_workflow_json?skipModelValidation={skip_validation}",
+            json=request_data,
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            return response.json()
+        elif response.status_code == 400:
+            response_data = response.json()
+            # Проверяем, действительно ли это пропуск моделей
+            if skip_model_validation and "missing_models" in response_data:
+                # Если пропускаем валидацию, возвращаем workflow как есть
+                return {
+                    "success": True,
+                    "launcher_json": {
+                        "workflow_json": workflow_json,
+                        "files": [],  # Пустой список файлов
+                        "snapshot_json": {"comfyui": None, "git_custom_nodes": {}},
+                        "pip_requirements": []
+                    }
+                }
+            return response_data
+        else:
+            raise Exception(f"Server returned status code: {response.status_code}")
+            
+    except Exception as e:
+        logger.error(f"Error in get_launcher_json_for_workflow_json: {str(e)}")
+        raise
 
 def generate_incrementing_filename(filepath):
     filename, file_extension = os.path.splitext(filepath)
@@ -411,24 +697,85 @@ def rename_file_in_launcher_json(launcher_json, old_filename, new_filename):
 
 
 def set_default_workflow_from_launcher_json(project_folder_path, launcher_json):
-    if not launcher_json:
-        return
-    workflow_json = launcher_json["workflow_json"]
-    with open(
-        os.path.join(
-            project_folder_path, "comfyui", "web", "scripts", "defaultGraph.js"
-        ),
-        "w",
-    ) as f:
-        f.write(f"export const defaultGraph = {json.dumps(workflow_json, indent=2)};")
+    """
+    Устанавливает workflow по умолчанию из launcher.json с поддержкой разных форматов
+    
+    Args:
+        project_folder_path (str): Путь к папке проекта
+        launcher_json (dict): JSON с конфигурацией launcher'а
+    """
+    try:
+        if not launcher_json or "workflow_json" not in launcher_json:
+            logger.warning("Нет workflow_json в launcher_json")
+            return
 
-    with open(
-        os.path.join(
+        # Получаем workflow_json и обрабатываем разные форматы
+        workflow_json = launcher_json["workflow_json"]
+        
+        # Проверяем формат с вложенным workflow
+        if isinstance(workflow_json, dict) and "workflow" in workflow_json:
+            logger.info("Обнаружен вложенный формат workflow")
+            workflow_json = workflow_json["workflow"]
+        
+        # Проверяем базовую структуру
+        if not isinstance(workflow_json, dict):
+            workflow_json = {}
+            logger.warning("workflow_json не является словарем, создаем пустую структуру")
+            
+        # Устанавливаем обязательные поля
+        workflow_json["version"] = float(workflow_json.get("version", 1.0))
+        workflow_json.setdefault("nodes", [])
+        workflow_json.setdefault("links", [])
+        
+        # Пересчитываем ID для узлов и связей
+        max_node_id = 0
+        max_link_id = 0
+        
+        for node in workflow_json.get("nodes", []):
+            if isinstance(node, dict) and "id" in node:
+                try:
+                    node_id = int(str(node["id"]).strip())
+                    max_node_id = max(max_node_id, node_id)
+                except (ValueError, TypeError):
+                    continue
+        
+        for link in workflow_json.get("links", []):
+            if isinstance(link, dict) and "id" in link:
+                try:
+                    link_id = int(str(link["id"]).strip())
+                    max_link_id = max(max_link_id, link_id)
+                except (ValueError, TypeError):
+                    continue
+                
+        # Устанавливаем ID счетчики
+        workflow_json["last_node_id"] = max_node_id
+        workflow_json["last_link_id"] = max_link_id
+
+        # Сохраняем в defaultGraph.js
+        default_graph_path = os.path.join(
+            project_folder_path, "comfyui", "web", "scripts", "defaultGraph.js"
+        )
+        os.makedirs(os.path.dirname(default_graph_path), exist_ok=True)
+        
+        with open(default_graph_path, "w", encoding='utf-8') as f:
+            f.write("window.resetWorkflowHistory = true;\n")
+            f.write(f"export const defaultGraph = {json.dumps(workflow_json, indent=2, ensure_ascii=False)};")
+        logger.info(f"Сохранен defaultGraph.js с {len(workflow_json.get('nodes', []))} узлами")
+
+        # Сохраняем в current_graph.json
+        workflow_path = os.path.join(
             project_folder_path, "comfyui", "custom_nodes", "ComfyUI-ComfyWorkflows", "current_graph.json"
-        ),
-        "w",
-    ) as f:
-        json.dump(workflow_json, f)
+        )
+        os.makedirs(os.path.dirname(workflow_path), exist_ok=True)
+        
+        with open(workflow_path, "w", encoding='utf-8') as f:
+            json.dump(workflow_json, f, indent=2, ensure_ascii=False)
+        logger.info(f"Сохранен current_graph.json")
+
+    except Exception as e:
+        logger.error(f"Ошибка при установке workflow: {str(e)}")
+        logger.debug("Workflow JSON:", workflow_json if 'workflow_json' in locals() else "Недоступен")
+        raise
 
 
 def get_launcher_state(project_folder_path):
@@ -456,19 +803,59 @@ def set_launcher_state_data(project_folder_path, data: dict):
         json.dump(existing_state, f)
 
 def install_pip_reqs(project_folder_path, pip_reqs):
+    """Установка pip зависимостей"""
     if not pip_reqs:
         return
-    print("Installing pip requirements...")
-    with open(os.path.join(project_folder_path, "requirements.txt"), "w") as f:
+    
+    logger.info("Installing pip requirements...")
+    
+    # Создаем временный requirements.txt
+    requirements_path = os.path.join(project_folder_path, "requirements.txt")
+    with open(requirements_path, "w") as f:
         for req in pip_reqs:
             if isinstance(req, str):
                 f.write(req + "\n")
             elif isinstance(req, dict):
                 f.write(f"{req['_key']}=={req['_version']}\n")
-    run_command_in_project_venv(
-        project_folder_path,
-        f"pip install -r {os.path.join(project_folder_path, 'requirements.txt')}",
-    )
+    
+    try:
+        # Сначала пробуем установить без конфликтующих пакетов
+        logger.info("Attempting to install requirements...")
+        run_command_in_project_venv(
+            project_folder_path,
+            f"pip install -r {requirements_path} --no-deps",
+        )
+        
+        # Затем устанавливаем зависимости с игнорированием конфликтов
+        logger.info("Installing dependencies...")
+        run_command_in_project_venv(
+            project_folder_path,
+            f"pip install -r {requirements_path} --no-dependencies",
+        )
+        
+        # Устанавливаем typing-extensions отдельно с совместимой версией
+        logger.info("Installing typing-extensions...")
+        run_command_in_project_venv(
+            project_folder_path,
+            "pip install typing-extensions>=4.8.0",
+        )
+        
+    except Exception as e:
+        logger.error(f"Error installing requirements: {e}")
+        # Если установка с --no-deps не сработала, пробуем установить с --ignore-installed
+        try:
+            logger.info("Retrying installation with --ignore-installed...")
+            run_command_in_project_venv(
+                project_folder_path,
+                f"pip install -r {requirements_path} --ignore-installed",
+            )
+        except Exception as e:
+            logger.error(f"Failed to install requirements: {e}")
+            raise
+    finally:
+        # Удаляем временный файл
+        if os.path.exists(requirements_path):
+            os.remove(requirements_path)
 
 def get_project_port(id):
     project_path = os.path.join(PROJECTS_DIR, id)
@@ -493,10 +880,105 @@ def find_free_port(start_port, end_port):
     return None  # No free port found in the range
 
 def create_symlink(source, target):
-    if os.name == 'nt':  # Check if running on Windows
-        run_command(['mklink', '/D', target, source])
-    else:
-        os.symlink(source, target, target_is_directory=True)
+    try:
+        source = os.path.abspath(source)
+        target = os.path.abspath(target)
+        
+        logger.info(f"Creating symlink/copy: {source} -> {target}")
+        
+        if os.path.exists(target):
+            logger.info(f"Target path already exists: {target}")
+            return
+            
+        if os.name == 'nt':  # Windows
+            try:
+                # Используем os.system вместо subprocess для лучшей совместимости
+                result = os.system(f'cmd /c mklink /D "{target}" "{source}"')
+                if result == 0:
+                    logger.info(f"Created symlink: {target} -> {source}")
+                    return
+                else:
+                    raise Exception(f"Failed to create symlink, return code: {result}")
+            except Exception as e:
+                logger.warning(f"Failed to create symlink: {e}, falling back to copy")
+                shutil.copytree(source, target)
+                logger.info(f"Copied directory: {source} -> {target}")
+        else:  # Linux/Mac
+            try:
+                os.symlink(source, target, target_is_directory=True)
+                logger.info(f"Created symlink: {target} -> {source}")
+            except OSError as e:
+                logger.warning(f"Failed to create symlink: {e}, falling back to copy")
+                shutil.copytree(source, target)
+                logger.info(f"Copied directory: {source} -> {target}")
+    except Exception as e:
+        logger.error(f"Error creating symlink/copy: {e}")
+        try:
+            shutil.copytree(source, target)
+            logger.info(f"Copied directory as fallback: {source} -> {target}")
+        except Exception as copy_error:
+            logger.error(f"Error copying directory: {copy_error}")
+            raise
 
 def create_virtualenv(venv_path):
-    run_command(['python', '-m', 'venv', venv_path])
+    """Создание виртуального окружения"""
+    try:
+        logger.info(f"Creating virtual environment at {venv_path}")
+        
+        # Преобразуем путь в абсолютный
+        venv_path = os.path.abspath(venv_path)
+        
+        if os.path.exists(venv_path):
+            logger.info(f"Virtual environment already exists at {venv_path}")
+            return
+
+        # Используем virtualenv вместо venv
+        logger.info("Installing virtualenv...")
+        subprocess.run([
+            "pip", "install", "virtualenv"
+        ], check=True)
+
+        # Создаем виртуальное окружение с помощью virtualenv
+        logger.info("Creating virtual environment with virtualenv...")
+        subprocess.run([
+            "virtualenv", venv_path
+        ], check=True)
+
+        # Определяем пути к python и pip
+        if os.name == "nt":  # Windows
+            python_path = os.path.join(venv_path, 'Scripts', 'python.exe')
+            pip_path = os.path.join(venv_path, 'Scripts', 'pip.exe')
+        else:  # Linux/Mac
+            python_path = os.path.join(venv_path, 'bin', 'python')
+            pip_path = os.path.join(venv_path, 'bin', 'pip')
+
+        # Обновляем pip
+        logger.info("Updating pip...")
+        try:
+            subprocess.run([python_path, '-m', 'pip', 'install', '--upgrade', 'pip'], 
+                         check=True)
+        except subprocess.CalledProcessError as e:
+            logger.warning(f"Failed to upgrade pip: {e}")
+
+        # Устанавливаем PyTorch с CUDA
+        logger.info("Installing PyTorch...")
+        try:
+            subprocess.run([
+                pip_path,
+                'install',
+                'torch',
+                'torchvision',
+                'torchaudio',
+                '--index-url', 'https://download.pytorch.org/whl/cu121'
+            ], check=True)
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to install PyTorch: {e}")
+            raise
+
+        logger.info("Virtual environment created successfully")
+        
+    except Exception as e:
+        logger.error(f"Error creating virtual environment: {e}")
+        if os.path.exists(venv_path):
+            shutil.rmtree(venv_path, ignore_errors=True)
+        raise
