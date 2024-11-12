@@ -1,0 +1,5 @@
+requests>=2.31.0
+tqdm>=4.65.0
+psutil<6.0.0
+setuptools>=75.4.0
+wheel>=0.45.0
