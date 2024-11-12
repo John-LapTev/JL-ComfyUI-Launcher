@@ -78,18 +78,23 @@
 
 ## Результат
 
-После успешной сборки создается директория:
+После успешной сборки создается портативная директория в той же папке, где находится скрипт сборки:
 ```
-ComfyUI-Launcher-Portable-{ТИП}/
-├── python/
-├── redis/
-├── nodejs/
-├── launcher/
-├── models/
-├── cuda/ (только для версии CUDA)
-├── start.bat (Windows)
-└── start.sh (MacOS/Linux)
+Текущая Директория/
+├── build_portable.py
+├── run_as_admin.bat (или .sh)
+└── ComfyUI-Launcher-Portable-{ТИП}/  # Создается здесь
+    ├── python/
+    ├── redis/
+    ├── nodejs/
+    ├── launcher/
+    ├── models/
+    ├── cuda/ (только для версии CUDA)
+    ├── start.bat (Windows)
+    └── start.sh (MacOS/Linux)
 ```
+
+Примечание: Вы можете скопировать build_portable.py и соответствующий скрипт run_as_admin в любое удобное место. Портативная версия будет создана в этом же месте.
 
 ## Решение Проблем
 

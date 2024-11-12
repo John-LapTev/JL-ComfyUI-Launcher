@@ -40,12 +40,20 @@ sudo ./run_as_admin.sh
 
 ## Build Output
 
-The build process will create a portable directory one level up from the repository:
+The build process will create a portable directory in the same folder where the build script is located:
 ```
-Parent Directory/
-├── JL-ComfyUI-Launcher/        # Source repository
-│   └── builder/                # Builder directory
-└── ComfyUI-Launcher-Portable-MACOS/  # Built portable version
+builder/
+├── build_portable.py
+├── run_as_admin.sh
+└── ComfyUI-Launcher-Portable-MACOS/  # Created here
+```
+
+Alternatively, you can copy build_portable.py and run_as_admin.sh to any convenient location:
+```
+Your-Chosen-Directory/
+├── build_portable.py
+├── run_as_admin.sh
+└── ComfyUI-Launcher-Portable-MACOS/  # Will be created here
 ```
 
 ## Using Pre-built Version

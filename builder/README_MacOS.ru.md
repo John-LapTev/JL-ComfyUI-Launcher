@@ -76,19 +76,22 @@
 
 Полная документация процесса в [STRUCTURE.ru.md](STRUCTURE.ru.md)
 
-## Результат
+## Результат Сборки
 
-После успешной сборки создается директория:
+Процесс сборки создаст портативную директорию в той же папке, где находится скрипт сборки:
 ```
-ComfyUI-Launcher-Portable-{ТИП}/
-├── python/
-├── redis/
-├── nodejs/
-├── launcher/
-├── models/
-├── cuda/ (только для версии CUDA)
-├── start.bat (Windows)
-└── start.sh (MacOS/Linux)
+builder/
+├── build_portable.py
+├── run_as_admin.sh
+└── ComfyUI-Launcher-Portable-MACOS/  # Создается здесь
+```
+
+Также вы можете скопировать build_portable.py и run_as_admin.sh в любое удобное место:
+```
+Ваша-Выбранная-Папка/
+├── build_portable.py
+├── run_as_admin.sh
+└── ComfyUI-Launcher-Portable-MACOS/  # Будет создано здесь
 ```
 
 ## Решение Проблем

@@ -37,12 +37,20 @@ run_as_admin.bat
 
 ## Build Output
 
-The build process will create a portable directory one level up from the repository:
+The build process will create a portable directory in the same folder where the build script is located:
 ```
-Parent Directory/
-├── JL-ComfyUI-Launcher/        # Source repository
-│   └── builder/                # Builder directory
-└── ComfyUI-Launcher-Portable-{TYPE}/  # Built portable version
+builder/
+├── build_portable.py
+├── run_as_admin.bat
+└── ComfyUI-Launcher-Portable-{TYPE}/  # Created here
+```
+
+Alternatively, you can copy build_portable.py and run_as_admin.bat to any convenient location:
+```
+Your-Chosen-Directory/
+├── build_portable.py
+├── run_as_admin.bat
+└── ComfyUI-Launcher-Portable-{TYPE}/  # Will be created here
 ```
 
 ## Using Pre-built Version

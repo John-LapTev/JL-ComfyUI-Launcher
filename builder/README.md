@@ -76,20 +76,25 @@ See [STRUCTURE.md](STRUCTURE.md) for detailed description of directories and fil
 
 Full process documentation in [STRUCTURE.md](STRUCTURE.md)
 
-## Output
+## Build Output
 
-After successful build, you'll get:
+After successful build, you'll get a portable directory in the same folder where the build script is located:
 ```
-ComfyUI-Launcher-Portable-{TYPE}/
-├── python/
-├── redis/
-├── nodejs/
-├── launcher/
-├── models/
-├── cuda/ (CUDA version only)
-├── start.bat (Windows)
-└── start.sh (MacOS/Linux)
+Current Directory/
+├── build_portable.py
+├── run_as_admin.bat (or .sh)
+└── ComfyUI-Launcher-Portable-{TYPE}/  # Created here
+    ├── python/
+    ├── redis/
+    ├── nodejs/
+    ├── launcher/
+    ├── models/
+    ├── cuda/ (CUDA version only)
+    ├── start.bat (Windows)
+    └── start.sh (MacOS/Linux)
 ```
+
+Note: You can copy build_portable.py and the appropriate run_as_admin script to any location of your choice. The portable version will be created in that same location.
 
 ## Troubleshooting
 
