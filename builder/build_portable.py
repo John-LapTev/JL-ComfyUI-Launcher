@@ -848,7 +848,7 @@ import site'''
                         safe_remove(launcher_dir)
                         time.sleep(1)
                     
-                    subprocess.run(['git', 'clone', 'https://github.com/ComfyWorkflows/comfyui-launcher', 
+                    subprocess.run(['git', 'clone', 'https://github.com/John-LapTev/JL-ComfyUI-Launcher', 
                                 launcher_dir], check=True)
                     break
                 except Exception as e:
@@ -858,7 +858,7 @@ import site'''
                         logger.error("Failed to clone repository after 3 attempts")
                         return False
                     time.sleep(2)
-
+"""
             # Копируем модифицированные файлы
             logger.info("\nCopying modified files...")
             modified_files = {
@@ -884,7 +884,7 @@ import site'''
                     logger.info(f"✓ Copied {file} to {dest}")
                 else:
                     logger.warning(f"✗ Warning: {file} not found in modified_files directory")
-
+"""
             # Настройка виртуального окружения
             logger.info("\nSetting up virtual environment...")
             venv_path = os.path.join(base_dir, 'launcher', 'venv')
