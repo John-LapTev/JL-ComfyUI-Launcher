@@ -1,142 +1,109 @@
-# ComfyUI Launcher (BETA)
-Run any ComfyUI workflow w/ **ZERO setup**.
+[English](README.md) | [Русский](README.ru.md)
 
-Need help? Join our Discord!
+# JL-ComfyUI-Launcher (Enhanced Edition)
+Run any ComfyUI workflow with **ZERO setup**. This is an enhanced fork of the original ComfyUI Launcher with significant improvements in stability, error handling, and functionality.
 
-[![](https://dcbadge.vercel.app/api/server/kXS43yTRNA)](https://discord.gg/kXS43yTRNA)
+## Key Improvements Over Original Version
 
-Runs anywhere:
-- [Locally](#quick-start)
-- [RunPod](/cloud/RUNPOD.md)
-- [Huggingface Spaces](https://huggingface.co/spaces/multimodalart/comfyUI-laucher-v2)
+### 1. Enhanced Reliability
+- Improved error handling during installation
+- Better dependency management
+- Fixed symbolic links issues
+- Automatic retries for downloads
+- Download speed monitoring
+- Improved file integrity checks
 
-## Features
+### 2. Project Management
+- Automatic creation of batch files for each project
+- Enhanced workflow import system
+- Better dependency handling
+- Improved status monitoring
+- Installation progress visualization
+- Each project in its own isolated environment
+
+### 3. Model Management
+- Automatic model detection and downloading
+- Proper model sorting by folders
+- Original filenames preservation
+- Correct dependency and path setup
+- Download progress visualization
+- Support for multiple model sources
+
+### 4. Technical Improvements
+- Improved Python environment setup
+- Better CUDA integration
+- Enhanced virtual environment management
+- Improved logging system
+- Multiple source support for models
+- Optimized package installation
+
+## Original Features
 - Automatically installs custom nodes, missing model files, etc.
 - Workflows exported by this tool can be run by anyone with **ZERO setup**
 - Work on multiple ComfyUI workflows at the same time
 - Each workflow runs in its own isolated environment
-- Prevents your workflows from suddenly breaking when updating custom nodes, ComfyUI, etc.
+- Prevents workflows from breaking when updating custom nodes, ComfyUI, etc.
 
-<p float="middle">
-  <img src="./assets/launcher_projects.png" width="45%" />
-  <img src="./assets/launcher_new_workflow.png" width="45%" />
-  <img src="./assets/launcher_import_workflow.png" width="45%" />
-  <img src="./assets/launcher_comfyui.png" width="45%" />
-</p>
-
-## Demo
-
-Running a workflow json file w/ no setup
-
-https://github.com/ComfyWorkflows/ComfyUI-Launcher/assets/33400216/aa17680d-eee5-4e6d-abc4-9f7551f9a4ad
-
-## Requirements
-
-#### Windows (Windows Subsystem for Linux - WSL) & Linux:
-- Docker (w/ GPU support) or Python 3
-
-#### macOS:
-- Python 3
-
-## Quick start
-
-### Option 1: Docker (Linux & Windows)
-
-#### Linux
-```
-docker run \
---gpus all \ # remove this line if you don't have a GPU or if you're on MacOS
---rm \
---name comfyui_launcher \
--p 4000-4100:4000-4100 \
--v $(pwd)/comfyui_launcher_models:/app/server/models \
--v $(pwd)/comfyui_launcher_projects:/app/server/projects \
--it thecooltechguy/comfyui_launcher
-```
+## System Requirements
 
 ### Windows
-```
-docker run ^
---gpus all ^ # remove this line if you don't have a GPU
---rm ^
---name comfyui_launcher ^
--p 4000-4100:4000-4100 ^
--v %cd%/comfyui_launcher_models:/app/server/models ^
--v %cd%/comfyui_launcher_projects:/app/server/projects ^
--it thecooltechguy/comfyui_launcher
-```
+- NVIDIA GPU recommended (for CUDA version)
+- Windows 10/11
+- 8GB RAM minimum
+- 20GB free disk space
 
-Open http://localhost:4000 in your browser
+### Installation Options
 
-### Option 2: Manual setup (macOS, Linux, and Windows)
-Works for **Windows (WSL - Windows Subsystem for Linux)**, **Linux**, & **macOS**
+#### Portable Version Downloads
+Ready-to-use portable versions:
+- [CUDA Version](https://jl-comfyui.hhos.net/JL-Portable/ComfyUI-Launcher-Portable-CUDA.7z) (for NVIDIA GPUs)
+- DirectML Version (for AMD/Intel GPUs) - Coming soon
+- CPU Version - Coming soon
 
-#### Installation (one-time setup)
-```
-git clone https://github.com/ComfyWorkflows/comfyui-launcher
-cd comfyui-launcher/
-```
-
-#### Start ComfyUI Launcher
-```
-./run.sh
-```
-Open http://localhost:4000 in your browser
-
-If you're facing issues w/ the installation, please make a post in the *bugs* forum on our [discord](https://discord.gg/QvGC8CFGDU)
-
-## Updating
-### Option 1: Docker
-```
-docker pull thecooltechguy/comfyui_launcher
-```
-
-### Option 2: Manual setup
-```
-git pull
+#### Manual Installation
+```bash
+git clone https://github.com/John-LapTev/JL-ComfyUI-Launcher.git
+cd JL-ComfyUI-Launcher/
 ```
 
 ## Usage
 
-### Using a reverse proxy (advanced)
-If you're running ComfyUI Launcher behind a reverse proxy or in an environment where you can only expose a single port to access the Launcher and its workflow projects, you can run the Launcher with `PROXY_MODE=true` (only available for Docker).
+### First Launch
+1. Run `start.bat` as administrator (only first time)
+2. Wait for initial setup to complete
+3. Access the interface at http://localhost:4000
 
-```
-docker run \
---gpus all \ # remove this line if you don't have a GPU or if you're on MacOS
---rm \
---name comfyui_launcher \
--p 4000:80 \
--v $(pwd)/comfyui_launcher_models:/app/server/models \
--v $(pwd)/comfyui_launcher_projects:/app/server/projects \
--e PROXY_MODE=true \
--it thecooltechguy/comfyui_launcher
-```
+### Important Notes
+- Run as administrator only for first launch
+- Keep antivirus exclusions for the launcher folder
+- Close all ComfyUI processes before launching
+- Make sure you have enough disk space
 
-Once the container is running, all you need to do is expose port 80 to the outside world. This will allow you to access the Launcher and its workflow projects from a single port.
+## Troubleshooting
+If you encounter issues:
+1. Close all ComfyUI windows
+2. Delete the .celery folder in the server folder if it exists
+3. Run start.bat as administrator
+4. Check the log files in the launcher folder
 
-Currently, `PROXY_MODE=true` only works with Docker, since NGINX is used within the container. 
-If you're running the Launcher manually, you'll need to set up a reverse proxy yourself (see the `nginx.conf` file for an example).
-
-### Using an existing ComfyUI models folder
-When starting the ComfyUI Launcher, you can set the `MODELS_DIR` environment variable to the path of your existing ComfyUI models folder. This will allow you to use the models you've already downloaded. By default, they're stored in `./server/models`
-
-### Using a different folder to store your Launcher projects
-When starting the ComfyUI Launcher, you can set the `PROJECTS_DIR` environment variable to the path of the folder you'd like to use to store your projects. By default, they're stored in `./server/projects`
+## Development
+Want to contribute? Great!
+1. Fork the repository
+2. Create your feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
 
 ## Donations
+If you find this fork useful:
+- [Support on Boosty](https://boosty.to/jlsd/donate)
 
-If you find our work useful for you, we'd appreciate any donations! Thank you!
-
-<a href="https://www.buymeacoffee.com/comfy.workflows" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="41" width="174"></a>
-
-## Coming soon
-- Native Windows support (w/o requiring WSL)
-- Better way to manage your workflows locally
-- Run workflows w/ Cloud GPUs
-- Backup your projects to the cloud
-- Run ComfyUI Launcher in the cloud
+Original project:
+- [Buy Me A Coffee](https://www.buymeacoffee.com/comfy.workflows)
 
 ## Credits
+- Original ComfyUI Launcher by ComfyWorkflows
 - ComfyUI Manager (https://github.com/ltdrdata/ComfyUI-Manager/)
-  - Used to auto-detect & install custom nodes
+
+## License
+GNU Affero General Public License v3.0 - see [LICENSE](LICENSE) for details
