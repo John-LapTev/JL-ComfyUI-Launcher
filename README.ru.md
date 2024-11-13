@@ -9,6 +9,25 @@
 - [Группа Telegram](https://t.me/JL_Stable_Diffusion) - Новости, обновления и обсуждения AI
 - [Блог на Boosty](https://boosty.to/jlsd) - Сборки, туториалы и многое другое
 
+## Быстрая Установка
+
+Для создания портативной версии не обязательно клонировать весь репозиторий. Достаточно скачать два файла:
+
+### Windows
+1. Скачайте:
+   - [build_portable.py](https://raw.githubusercontent.com/John-LapTev/JL-ComfyUI-Launcher/main/builder/build_portable.py)
+   - [run_as_admin.bat](https://raw.githubusercontent.com/John-LapTev/JL-ComfyUI-Launcher/main/builder/scripts/run_as_admin.bat)
+2. Поместите оба файла в одну директорию
+3. Запустите `run_as_admin.bat`
+
+### MacOS
+1. Скачайте:
+   - [build_portable.py](https://raw.githubusercontent.com/John-LapTev/JL-ComfyUI-Launcher/main/builder/build_portable.py)
+   - [run_as_admin.sh](https://raw.githubusercontent.com/John-LapTev/JL-ComfyUI-Launcher/main/builder/scripts/run_as_admin.sh)
+2. Поместите оба файла в одну директорию
+3. Сделайте скрипт исполняемым: `chmod +x run_as_admin.sh`
+4. Запустите: `sudo ./run_as_admin.sh`
+
 ## Ключевые Улучшения
 
 ### 1. Повышенная Надёжность
@@ -76,22 +95,37 @@ cd JL-ComfyUI-Launcher/builder
 - 20GB свободного места на диске
 
 ## Первый Запуск
-1. Запустите `start.bat` от имени администратора (Windows) или `start.sh` (MacOS) - только первый раз
+1. Запустите `start.bat` (Windows) или `start.sh` (MacOS)
 2. Дождитесь завершения начальной настройки
 3. Откройте интерфейс по адресу http://localhost:4000
 
 ## Важные Замечания
-- Запуск от администратора нужен только при первом запуске
 - Добавьте папку лаунчера в исключения антивируса
 - Закройте все процессы ComfyUI перед запуском
 - Убедитесь, что достаточно места на диске
+- Рекомендуется устанавливать в директорию с коротким путём (например, `C:\ComfyUI` вместо `C:\Users\Username\Documents\Projects\ComfyUI`)
 
 ## Решение Проблем
-Если возникли проблемы:
+
+### Общие Проблемы
 1. Закройте все окна ComfyUI
 2. Удалите папку .celery в папке server, если она существует
-3. Запустите скрипт запуска от имени администратора
+3. Перезапустите start.bat/start.sh
 4. Проверьте файлы логов в папке лаунчера
+
+### Проблема с Длинными Путями в Windows
+Если при установке или импорте workflow возникает ошибка, связанная с длинными путями:
+
+1. Включите поддержку длинных путей в Windows:
+   - Откройте редактор групповой политики (gpedit.msc)
+   - Перейдите: Конфигурация компьютера → Административные шаблоны → Система → Файловая система
+   - Найдите "Enable Win32 long paths"
+   - Установите значение "Включено"
+   - Перезагрузите компьютер
+
+2. Или используйте короткий путь установки:
+   - Устанавливайте лаунчер ближе к корню диска
+   - Например: `C:\ComfyUI` вместо `C:\Users\Username\Documents\Projects\ComfyUI`
 
 ## Разработка
 Хотите внести свой вклад? Отлично!

@@ -347,7 +347,7 @@ def set_config(config):
         json.dump(config, f)
 
 def download_with_retry(url, temp_path, dest_path, sha256_checksum=None, headers=None, max_retries=3):
-    """Загрузка файла с повторными попытками и улучшенным отображением прогресса"""
+    """Загрузка файла с повторными попытками и улучшенной обработкой ошибок"""
     if not url or not isinstance(url, str):
         logger.error(f"Invalid URL provided: {url}")
         return False
@@ -363,36 +363,40 @@ def download_with_retry(url, temp_path, dest_path, sha256_checksum=None, headers
     })
 
     filename = os.path.basename(dest_path)
-    print(f"DEBUG: Начало загрузки файла {filename}")
-    print(f"DEBUG: URL: {url}")
+    logger.info(f"Starting download of {filename}")
+    logger.debug(f"URL: {url}")
+
+    # Создаем все необходимые директории заранее
+    os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+    os.makedirs(os.path.dirname(temp_path), exist_ok=True)
 
     for attempt in range(max_retries):
+        current_temp_path = f"{temp_path}.{attempt}"
         try:
-            # Пробуем получить размер файла с коротким таймаутом
+            # Получаем размер файла
             try:
-                print(f"\nПолучение информации о файле {filename}...")
+                logger.info(f"Getting file info for {filename}...")
                 head_response = requests.head(url, headers=headers, timeout=5)
                 total_size = int(head_response.headers.get('content-length', 0))
                 if total_size > 0:
-                    print(f"Размер файла: {total_size/1024/1024:.1f} MB")
+                    logger.info(f"File size: {total_size/1024/1024:.1f} MB")
                 else:
-                    print("Размер файла неизвестен")
+                    logger.info("File size unknown")
             except Exception as e:
-                print(f"Не удалось получить размер файла: {str(e)}")
+                logger.warning(f"Failed to get file size: {str(e)}")
                 total_size = 0
 
-            # Начинаем загрузку
-            print(f"Загрузка: {filename}")
-            response = requests.get(url, headers=headers, stream=True, timeout=10)
+            # Загружаем файл
+            logger.info(f"Downloading: {filename}")
+            response = requests.get(url, headers=headers, stream=True, timeout=30)
             response.raise_for_status()
 
             block_size = 1024 * 1024  # 1MB chunks
             downloaded_size = 0
             start_time = time.time()
             last_update_time = start_time
-            
-            # Создаем файл и прогресс-бар
-            with open(temp_path, 'wb') as f:
+
+            with open(current_temp_path, 'wb') as f:
                 with tqdm(
                     total=total_size if total_size > 0 else None,
                     unit='B',
@@ -401,7 +405,6 @@ def download_with_retry(url, temp_path, dest_path, sha256_checksum=None, headers
                     desc=filename,
                     ascii=True,
                     ncols=100,
-                    leave=False,
                     dynamic_ncols=True
                 ) as pbar:
                     for chunk in response.iter_content(chunk_size=block_size):
@@ -410,81 +413,71 @@ def download_with_retry(url, temp_path, dest_path, sha256_checksum=None, headers
                             chunk_size = len(chunk)
                             downloaded_size += chunk_size
                             pbar.update(chunk_size)
-                            
-                            # Обновляем общий размер если он не был известен
-                            if total_size == 0:
-                                pbar.total = downloaded_size * 1.1  # Предполагаемый размер
-                            
-                            # Обновляем скорость каждую секунду
+
                             current_time = time.time()
                             if current_time - last_update_time >= 1:
                                 elapsed = current_time - start_time
-                                speed = downloaded_size / (1024 * 1024 * elapsed)  # MB/s
-                                pbar.set_postfix({"Скорость": f"{speed:.1f}MB/s"}, refresh=True)
+                                speed = downloaded_size / (1024 * 1024 * elapsed)
+                                pbar.set_postfix({"Speed": f"{speed:.1f}MB/s"}, refresh=True)
                                 last_update_time = current_time
 
-            # Проверяем загруженный файл
-            if os.path.exists(temp_path):
-                actual_size = os.path.getsize(temp_path)
-                if actual_size == 0:
-                    print(f"\nОшибка: Загруженный файл пуст")
-                    if attempt < max_retries - 1:
-                        print(f"Повторная попытка {attempt + 2}/{max_retries}...")
-                        continue
-                    return False
+            # Проверяем файл
+            if not os.path.exists(current_temp_path):
+                raise Exception("Downloaded file not found")
 
-                if sha256_checksum:
-                    print("Проверка контрольной суммы...")
-                    downloaded_checksum = compute_sha256_checksum(temp_path)
-                    if downloaded_checksum != sha256_checksum:
-                        print(f"\nОшибка: Контрольная сумма не совпадает")
-                        if attempt < max_retries - 1:
-                            print(f"Повторная попытка {attempt + 2}/{max_retries}...")
-                            continue
-                        return False
+            file_size = os.path.getsize(current_temp_path)
+            if file_size == 0:
+                raise Exception("Downloaded file is empty")
 
-                print(f"\nУспешно загружено: {filename}")
-                print(f"Размер файла: {actual_size/1024/1024:.1f} MB")
+            logger.info(f"Download completed: {filename}")
+            logger.info(f"File size: {file_size/1024/1024:.1f} MB")
+
+            # Проверяем контрольную сумму
+            if sha256_checksum:
+                logger.info("Verifying checksum...")
+                if compute_sha256_checksum(current_temp_path) != sha256_checksum:
+                    raise Exception("Checksum verification failed")
+
+            # Перемещаем файл
+            logger.info("Moving file to destination...")
+            try:
+                if os.path.exists(dest_path):
+                    os.remove(dest_path)
+                shutil.move(current_temp_path, dest_path)
+                
+                if not os.path.exists(dest_path):
+                    raise Exception("File verification after move failed")
+                    
                 return True
-
-        except requests.exceptions.RequestException as e:
-            error_msg = str(e)
-            if "Unauthorized" in error_msg:
-                if "huggingface.co" in url:
-                    print("\nОшибка: Требуется авторизация Hugging Face. Проверьте токен в настройках.")
-                elif "civitai.com" in url:
-                    print("\nОшибка: Требуется авторизация CivitAI. Проверьте API ключ в настройках.")
-                return False
-            else:
-                print(f"\nОшибка загрузки: {error_msg}")
-
-            if attempt < max_retries - 1:
-                wait_time = 2 ** attempt  # Экспоненциальное увеличение времени ожидания
-                print(f"Повторная попытка через {wait_time} сек...")
-                time.sleep(wait_time)
-                continue
-            return False
+                
+            except Exception as move_error:
+                logger.error(f"Error moving file: {move_error}")
+                if os.path.exists(current_temp_path):
+                    try:
+                        os.remove(current_temp_path)
+                    except:
+                        pass
+                raise
 
         except Exception as e:
-            print(f"\nНеизвестная ошибка: {str(e)}")
+            logger.error(f"Attempt {attempt + 1} failed: {str(e)}")
+            if os.path.exists(current_temp_path):
+                try:
+                    os.remove(current_temp_path)
+                except:
+                    pass
+
             if attempt < max_retries - 1:
                 wait_time = 2 ** attempt
-                print(f"Повторная попытка через {wait_time} сек...")
+                logger.info(f"Retrying in {wait_time} seconds...")
                 time.sleep(wait_time)
                 continue
             return False
-
-        finally:
-            if os.path.exists(temp_path) and not os.path.exists(dest_path):
-                try:
-                    os.remove(temp_path)
-                except:
-                    pass
 
     return False
 
 def setup_files_from_launcher_json(project_folder_path, launcher_json):
-    """Установка файлов из launcher.json с улучшенной обработкой ошибок и визуализацией"""
+    """Установка файлов из launcher.json с улучшенной обработкой ошибок"""
     if not launcher_json:
         return
 
@@ -498,7 +491,7 @@ def setup_files_from_launcher_json(project_folder_path, launcher_json):
             logger.info("No files to download")
             return missing_download_files
 
-        print(f"\nНачинаем загрузку файлов (всего {total_files}):")
+        logger.info(f"Total files to download: {total_files}")
         processed_files = 0
 
         # Создаем временную директорию для загрузок
@@ -527,19 +520,19 @@ def setup_files_from_launcher_json(project_folder_path, launcher_json):
 
                     dest_path = os.path.join(project_folder_path, "comfyui", dest_relative_path)
                     temp_path = os.path.join(temp_dir, os.path.basename(dest_relative_path))
-                    os.makedirs(os.path.dirname(dest_path), exist_ok=True)
                     
+                    # Проверяем существующий файл
                     if os.path.exists(dest_path):
                         if sha256_checksum and compute_sha256_checksum(dest_path) == sha256_checksum:
                             logger.info(f"File already exists with correct checksum: {dest_path}")
                             downloaded_file = True
                             processed_files += 1
-                            print(f"Общий прогресс: {processed_files}/{total_files} файлов ({(processed_files/total_files*100):.0f}%)")
+                            logger.info(f"Progress: {processed_files}/{total_files} files ({(processed_files/total_files*100):.0f}%)")
                             break
                         else:
-                            logger.info(f"File exists but checksum mismatch or no checksum: {dest_path}")
+                            logger.info(f"File exists but needs update: {dest_path}")
 
-                    # Получаем список URL для скачивания
+                    # Получаем URL для загрузки
                     download_urls = []
                     if "/comfyui-launcher/" in download_url:
                         try:
@@ -551,31 +544,25 @@ def setup_files_from_launcher_json(project_folder_path, launcher_json):
                                     download_urls = response_json["urls"]
                                 else:
                                     download_urls = [download_url]
-                            except (json.JSONDecodeError, ValueError) as e:
-                                logger.debug(f"Raw response content: {response.text[:200]}...")
-                                logger.warning(f"Failed to parse JSON response: {e}, using direct URL")
+                            except (json.JSONDecodeError, ValueError):
+                                logger.warning("Failed to parse JSON response, using direct URL")
                                 download_urls = [download_url]
                         except requests.exceptions.RequestException as e:
                             if hasattr(e.response, 'status_code') and e.response.status_code == 500:
-                                logger.warning(f"Server error (500) for URL {download_url}, skipping to next URL...")
+                                logger.warning(f"Server error (500) for URL {download_url}")
                                 continue
                             logger.error(f"Error getting download URLs: {e}")
                             download_urls = [download_url]
                     else:
                         download_urls = [download_url]
 
-                    if not download_urls:
-                        logger.warning(f"No valid download URLs found for {dest_relative_path}")
-                        continue
-
-                    # Пробуем каждый URL
+                    # Пробуем загрузить файл
                     for url in download_urls:
                         if not url or not isinstance(url, str):
-                            logger.warning(f"Invalid URL found in download_urls: {url}")
                             continue
 
-                        # Подготавливаем заголовки
                         headers = {}
+                        # Добавляем авторизационные заголовки
                         if "civitai.com" in url:
                             api_key = config.get('credentials', {}).get('civitai', {}).get('apikey')
                             if api_key:
@@ -585,50 +572,34 @@ def setup_files_from_launcher_json(project_folder_path, launcher_json):
                             if hf_token:
                                 headers["Authorization"] = f"Bearer {hf_token}"
                         
-                        download_success = download_with_retry(
+                        # Пробуем загрузить файл
+                        if download_with_retry(
                             url=url,
                             temp_path=temp_path,
                             dest_path=dest_path,
                             sha256_checksum=sha256_checksum,
                             headers=headers
-                        )
-                        
-                        if download_success:
-                            try:
-                                os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-                                shutil.move(temp_path, dest_path)
-                                logger.info(f"Successfully downloaded: {dest_relative_path}")
-                                downloaded_file = True
-                                processed_files += 1
-                                print(f"Общий прогресс: {processed_files}/{total_files} файлов ({(processed_files/total_files*100):.0f}%)")
-                                break
-                            except Exception as e:
-                                logger.error(f"Error moving file to destination: {e}")
-                                if os.path.exists(temp_path):
-                                    os.remove(temp_path)
-                        else:
-                            if os.path.exists(temp_path):
-                                os.remove(temp_path)
-
-                    if downloaded_file:
-                        break
+                        ):
+                            downloaded_file = True
+                            processed_files += 1
+                            logger.info(f"Progress: {processed_files}/{total_files} files ({(processed_files/total_files*100):.0f}%)")
+                            break
 
                 if not downloaded_file and current_file:
-                    logger.warning(f"Failed to download from all sources: {current_file}")
+                    logger.warning(f"Failed to download: {current_file}")
                     missing_download_files.add(current_file)
                     processed_files += 1
-                    print(f"Общий прогресс: {processed_files}/{total_files} файлов ({(processed_files/total_files*100):.0f}%)")
+                    logger.info(f"Progress: {processed_files}/{total_files} files ({(processed_files/total_files*100):.0f}%)")
 
-        print(f"\nЗагрузка файлов завершена. Успешно: {total_files - len(missing_download_files)}, Ошибок: {len(missing_download_files)}")
+        logger.info(f"Download completed. Success: {total_files - len(missing_download_files)}, Failed: {len(missing_download_files)}")
         if missing_download_files:
-            logger.warning(f"Missing files: {len(missing_download_files)}")
             for missing in missing_download_files:
-                logger.warning(f"  - {missing}")
+                logger.warning(f"Missing file: {missing}")
                 
         return missing_download_files
 
     except Exception as e:
-        logger.error(f"Error in setup_files_from_launcher_json: {str(e)}")
+        logger.error(f"Error in setup_files_from_launcher_json: {e}")
         logger.error("Stack trace:", exc_info=True)
         return missing_download_files
 
@@ -921,30 +892,42 @@ def create_symlink(source, target):
             raise
 
 def create_virtualenv(venv_path):
-    """Создание виртуального окружения"""
+    """Создание виртуального окружения с корректной обработкой отмены"""
+    cleanup_needed = False
     try:
         logger.info(f"Creating virtual environment at {venv_path}")
         
-        # Преобразуем путь в абсолютный
         venv_path = os.path.abspath(venv_path)
+        cleanup_needed = True
         
         if os.path.exists(venv_path):
             logger.info(f"Virtual environment already exists at {venv_path}")
             return
 
-        # Используем virtualenv вместо venv
+        # Устанавливаем virtualenv
         logger.info("Installing virtualenv...")
-        subprocess.run([
-            "pip", "install", "virtualenv"
-        ], check=True)
+        try:
+            subprocess.run([
+                "pip", "install", "virtualenv"
+            ], check=True)
+        except subprocess.CalledProcessError as e:
+            logger.warning(f"virtualenv installation warning: {e}")
+            # Продолжаем, так как virtualenv может уже быть установлен
 
-        # Создаем виртуальное окружение с помощью virtualenv
-        logger.info("Creating virtual environment with virtualenv...")
-        subprocess.run([
-            "virtualenv", venv_path
-        ], check=True)
+        # Создаем виртуальное окружение
+        logger.info("Creating virtual environment...")
+        try:
+            subprocess.run([
+                "virtualenv", venv_path
+            ], check=True)
+        except KeyboardInterrupt:
+            logger.info("Operation cancelled by user during virtualenv creation")
+            raise
+        except Exception as e:
+            logger.error(f"Error creating virtualenv: {e}")
+            raise
 
-        # Определяем пути к python и pip
+        # Определяем пути
         if os.name == "nt":  # Windows
             python_path = os.path.join(venv_path, 'Scripts', 'python.exe')
             pip_path = os.path.join(venv_path, 'Scripts', 'pip.exe')
@@ -955,30 +938,54 @@ def create_virtualenv(venv_path):
         # Обновляем pip
         logger.info("Updating pip...")
         try:
-            subprocess.run([python_path, '-m', 'pip', 'install', '--upgrade', 'pip'], 
-                         check=True)
-        except subprocess.CalledProcessError as e:
-            logger.warning(f"Failed to upgrade pip: {e}")
+            subprocess.run([
+                python_path, '-m', 'pip', 'install', '--upgrade', 'pip'
+            ], check=True)
+        except KeyboardInterrupt:
+            logger.info("Operation cancelled by user during pip upgrade")
+            raise
+        except Exception as e:
+            logger.warning(f"Pip upgrade warning: {e}")
+            # Продолжаем, так как это некритичная ошибка
 
-        # Устанавливаем PyTorch с CUDA
+        # Устанавливаем PyTorch
         logger.info("Installing PyTorch...")
         try:
             subprocess.run([
                 pip_path,
                 'install',
+                '--no-cache-dir',  # Избегаем проблем с кешем
                 'torch',
                 'torchvision',
                 'torchaudio',
                 '--index-url', 'https://download.pytorch.org/whl/cu121'
             ], check=True)
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Failed to install PyTorch: {e}")
+        except KeyboardInterrupt:
+            logger.info("Operation cancelled by user during PyTorch installation")
+            raise
+        except Exception as e:
+            logger.error(f"PyTorch installation error: {e}")
             raise
 
+        cleanup_needed = False
         logger.info("Virtual environment created successfully")
+        
+    except KeyboardInterrupt:
+        logger.info("Operation cancelled by user")
+        if cleanup_needed and os.path.exists(venv_path):
+            logger.info("Cleaning up virtual environment...")
+            try:
+                shutil.rmtree(venv_path, ignore_errors=True)
+            except Exception as e:
+                logger.error(f"Error during cleanup: {e}")
+        raise
         
     except Exception as e:
         logger.error(f"Error creating virtual environment: {e}")
-        if os.path.exists(venv_path):
-            shutil.rmtree(venv_path, ignore_errors=True)
+        if cleanup_needed and os.path.exists(venv_path):
+            logger.info("Cleaning up virtual environment...")
+            try:
+                shutil.rmtree(venv_path, ignore_errors=True)
+            except Exception as cleanup_error:
+                logger.error(f"Error during cleanup: {cleanup_error}")
         raise

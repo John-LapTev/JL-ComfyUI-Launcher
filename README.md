@@ -9,6 +9,25 @@ Join our community:
 - [Telegram Group](https://t.me/JL_Stable_Diffusion) - News, updates, and discussions about AI
 - [Boosty Blog](https://boosty.to/jlsd) - Builds, tutorials, and more
 
+## Quick Install
+
+You don't need to clone the entire repository to create a portable version. Just download two files:
+
+### Windows
+1. Download:
+   - [build_portable.py](https://raw.githubusercontent.com/John-LapTev/JL-ComfyUI-Launcher/main/builder/build_portable.py)
+   - [run_as_admin.bat](https://raw.githubusercontent.com/John-LapTev/JL-ComfyUI-Launcher/main/builder/scripts/run_as_admin.bat)
+2. Place both files in the same directory
+3. Run `run_as_admin.bat`
+
+### MacOS
+1. Download:
+   - [build_portable.py](https://raw.githubusercontent.com/John-LapTev/JL-ComfyUI-Launcher/main/builder/build_portable.py)
+   - [run_as_admin.sh](https://raw.githubusercontent.com/John-LapTev/JL-ComfyUI-Launcher/main/builder/scripts/run_as_admin.sh)
+2. Place both files in the same directory
+3. Make the script executable: `chmod +x run_as_admin.sh`
+4. Run: `sudo ./run_as_admin.sh`
+
 ## Key Improvements
 
 ### 1. Enhanced Reliability
@@ -76,22 +95,37 @@ For detailed build instructions, see:
 - 20GB free disk space
 
 ## First Launch
-1. Run `start.bat` as administrator (Windows) or `start.sh` (MacOS) - only first time
+1. Run `start.bat` (Windows) or `start.sh` (MacOS)
 2. Wait for initial setup to complete
 3. Access the interface at http://localhost:4000
 
 ## Important Notes
-- Run as administrator only for first launch
-- Keep antivirus exclusions for the launcher folder
+- Add launcher folder to antivirus exclusions
 - Close all ComfyUI processes before launching
 - Make sure you have enough disk space
+- Recommended to install in a directory with a short path (e.g., `C:\ComfyUI` instead of `C:\Users\Username\Documents\Projects\ComfyUI`)
 
 ## Troubleshooting
-If you encounter issues:
+
+### Common Issues
 1. Close all ComfyUI windows
 2. Delete the .celery folder in the server folder if it exists
-3. Run start script as administrator
+3. Restart start.bat/start.sh
 4. Check the log files in the launcher folder
+
+### Long Path Issues in Windows
+If you encounter errors related to long paths during installation or workflow import:
+
+1. Enable long path support in Windows:
+   - Open Group Policy Editor (gpedit.msc)
+   - Navigate to: Computer Configuration → Administrative Templates → System → Filesystem
+   - Find "Enable Win32 long paths"
+   - Set it to "Enabled"
+   - Restart your computer
+
+2. Or use a short installation path:
+   - Install the launcher closer to the root directory
+   - Example: `C:\ComfyUI` instead of `C:\Users\Username\Documents\Projects\ComfyUI`
 
 ## Development
 Want to contribute? Great!
