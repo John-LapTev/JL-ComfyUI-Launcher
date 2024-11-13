@@ -718,6 +718,15 @@ def build_portable(build_type):
             for subdir in model_subdirs:
                 os.makedirs(os.path.join(base_dir, 'models', subdir), exist_ok=True)
 
+            # Добавляем серверные директории
+            server_dir = os.path.join(base_dir, 'launcher', 'server')
+            os.makedirs(server_dir, exist_ok=True)
+            os.makedirs(os.path.join(server_dir, 'models'), exist_ok=True)
+            os.makedirs(os.path.join(server_dir, 'projects'), exist_ok=True)
+            os.makedirs(os.path.join(server_dir, '.celery'), exist_ok=True)
+            os.makedirs(os.path.join(server_dir, '.celery', 'results'), exist_ok=True)
+            os.makedirs(os.path.join(server_dir, '.celery', 'broker'), exist_ok=True)
+
             # Создаем конфигурацию Redis
             logger.info("\nCreating Redis configuration...")
             if build_type == BUILD_TYPE_MACOS:
@@ -858,33 +867,7 @@ import site'''
                         logger.error("Failed to clone repository after 3 attempts")
                         return False
                     time.sleep(2)
-"""
-            # Копируем модифицированные файлы
-            logger.info("\nCopying modified files...")
-            modified_files = {
-                'utils.py': '/server/utils.py',
-                'settings.py': '/server/settings.py',
-                'celery_app.py': '/server/celery_app.py',
-                '__init__.py': '/server/__init__.py',
-                'server.py': '/server/server.py',
-                'tasks.py': '/server/tasks.py',
-                'web/comfy_frame.html': '/web/comfy_frame.html',
-                # Добавляем новые модифицированные файлы
-                'web/src/components/SettingsUI.tsx': '/web/src/components/SettingsUI.tsx',
-                'web/src/lib/types.ts': '/web/src/lib/types.ts',
-                'web/src/pages/settings/page.tsx': '/web/src/pages/settings/page.tsx'
-            }
 
-            for file, dest_path in modified_files.items():
-                src = os.path.join('modified_files', file)
-                if os.path.exists(src):
-                    dest = os.path.join(base_dir, 'launcher', dest_path.lstrip('/'))
-                    os.makedirs(os.path.dirname(dest), exist_ok=True)
-                    shutil.copy2(src, dest)
-                    logger.info(f"✓ Copied {file} to {dest}")
-                else:
-                    logger.warning(f"✗ Warning: {file} not found in modified_files directory")
-"""
             # Настройка виртуального окружения
             logger.info("\nSetting up virtual environment...")
             venv_path = os.path.join(base_dir, 'launcher', 'venv')
