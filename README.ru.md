@@ -77,9 +77,9 @@ https://github.com/user-attachments/assets/7e3e9330-b2ff-467d-9015-a31c433882f8
 
 ## Начало Работы
 
-### Вариант 1: Скачать Готовую Версию
+### Вариант 1: Скачать Готовую Портативную Версию
 Скачайте и распакуйте готовую сборку:
-- [Версия CUDA](https://jl-comfyui.hhos.net/JL-Portable/ComfyUI-Launcher-Portable-CUDA.7z) (для видеокарт NVIDIA)
+- [Версия CUDA](https://github.com/John-LapTev/JL-ComfyUI-Launcher/releases/download/v0.1.0/JL-ComfyUI-Launcher-Portable-CUDA.7z) (для видеокарт NVIDIA)
 - Версия DirectML (для видеокарт AMD/Intel) - Скоро
 - Версия CPU - Скоро
 - Версия MacOS - Скоро

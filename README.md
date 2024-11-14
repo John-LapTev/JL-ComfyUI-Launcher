@@ -77,9 +77,9 @@ To create a portable version, you don't need to clone the entire repository. Jus
 
 ## Getting Started
 
-### Option 1: Download Ready-to-Use Version
+### Option 1: Download Ready-to-Use Portable Version
 Download and extract the ready-made build:
-- [CUDA Version](https://jl-comfyui.hhos.net/JL-Portable/ComfyUI-Launcher-Portable-CUDA.7z) (for NVIDIA GPUs)
+- [CUDA Version](https://github.com/John-LapTev/JL-ComfyUI-Launcher/releases/download/v0.1.0/JL-ComfyUI-Launcher-Portable-CUDA.7z) (for NVIDIA GPUs)
 - DirectML Version (for AMD/Intel GPUs) - Coming Soon
 - CPU Version - Coming Soon
 - MacOS Version - Coming Soon
