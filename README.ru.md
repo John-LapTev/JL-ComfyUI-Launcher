@@ -20,10 +20,7 @@
 
 Пример запуска workflow без настройки:
 
-<video width="600" controls>
-  <source src="https://jl-comfyui.hhos.net/GitHub/JL-ComfyUI-Launcher/assets/demo.mp4" type="video/mp4">
-  Ваш браузер не поддерживает видео тег.
-</video>
+https://github.com/user-attachments/assets/7e3e9330-b2ff-467d-9015-a31c433882f8
 
 ## Быстрая Установка
 
