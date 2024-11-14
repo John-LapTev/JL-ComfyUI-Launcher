@@ -21,7 +21,7 @@ Join our community:
 Example of running a workflow without setup:
 
 <video width="600" controls>
-  <source src="./assets/demo.mp4" type="video/mp4">
+  <source src="https://jl-comfyui.hhos.net/GitHub/JL-ComfyUI-Launcher/assets/demo.mp4" type="video/mp4">
   Your browser does not support the video tag.
 </video>
 
