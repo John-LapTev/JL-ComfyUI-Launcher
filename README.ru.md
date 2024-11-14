@@ -20,7 +20,10 @@
 
 Пример запуска workflow без настройки:
 
-![Демо Видео](./assets/demo.gif)
+<video width="600" controls>
+  <source src="./assets/demo.mp4" type="video/mp4">
+  Ваш браузер не поддерживает видео тег.
+</video>
 
 ## Быстрая Установка
 
