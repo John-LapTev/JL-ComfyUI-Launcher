@@ -4,10 +4,23 @@
 
 Запускайте любой ComfyUI воркфлоу с **НУЛЕВОЙ настройкой**. Это улучшенный форк оригинального ComfyUI Launcher со значительными улучшениями в стабильности, обработке ошибок и функциональности.
 
+<p float="middle">
+  <img src="./assets/launcher_projects.png" width="45%" />
+  <img src="./assets/launcher_new_workflow.png" width="45%" />
+  <img src="./assets/launcher_import_workflow.png" width="45%" />
+  <img src="./assets/launcher_comfyui.png" width="45%" />
+</p>
+
 ## Сообщество
 Присоединяйтесь к нашему сообществу:
 - [Группа Telegram](https://t.me/JL_Stable_Diffusion) - Новости, обновления и обсуждения AI
 - [Блог на Boosty](https://boosty.to/jlsd) - Сборки, туториалы и многое другое
+
+## Демонстрация
+
+Пример запуска workflow без настройки:
+
+![Демо Видео](./assets/demo.gif)
 
 ## Быстрая Установка
 
