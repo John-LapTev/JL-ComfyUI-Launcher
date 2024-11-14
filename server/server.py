@@ -62,7 +62,10 @@ app.config.from_mapping(
         task_ignore_result=False,
         task_always_eager=False,
         broker_connection_retry=True,
-        broker_connection_retry_on_startup=True
+        broker_connection_retry_on_startup=True,
+        # Добавляем эти две строки:
+        worker_redirect_stdouts=False,
+        worker_redirect_stdouts_level='INFO'
     ),
 )
 celery_app = celery_init_app(app)

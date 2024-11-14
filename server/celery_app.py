@@ -35,8 +35,11 @@ app.conf.update(
     redis_max_connections=20,
     redis_socket_timeout=30,
     redis_socket_connect_timeout=30,
-    task_ignore_result=False,  # Важно для отслеживания результатов
-    task_always_eager=False    # Важно для асинхронного выполнения
+    task_ignore_result=False,
+    task_always_eager=False,
+    # Добавляем эти две строки:
+    worker_redirect_stdouts=False,
+    worker_redirect_stdouts_level='INFO'
 )
 
 # Дополнительные настройки для Windows
