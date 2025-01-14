@@ -6,6 +6,24 @@ cd /d "%~dp0"
 
 echo Current directory: %CD%
 
+REM Проверяем и обновляем pip
+echo Checking and updating pip...
+python -m pip install --upgrade pip
+if errorlevel 1 (
+    echo Failed to update pip
+    pause
+    exit /b 1
+)
+
+REM Устанавливаем базовые пакеты Python
+echo Installing basic Python packages...
+python -m pip install virtualenv requests tqdm torch
+if errorlevel 1 (
+    echo Failed to install basic packages
+    pause
+    exit /b 1
+)
+
 REM Проверяем наличие build_portable.py в текущей директории
 if exist "build_portable.py" (
     echo Found in current directory

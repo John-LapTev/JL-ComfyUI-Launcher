@@ -25,6 +25,45 @@ BUILD_TYPE_CUDA = "cuda"
 BUILD_TYPE_DIRECTML = "directml"
 BUILD_TYPE_MACOS = "macos"
 
+def check_and_install_prerequisites():
+    """Проверка и установка базовых требований"""
+    try:
+        logger.info("Проверка базовых требований...")
+        
+        # 1. Пробуем обновить pip
+        try:
+            subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "pip"], check=True)
+        except Exception as e:
+            logger.warning(f"Не удалось обновить pip: {e}")
+            # Продолжаем работу, даже если pip не обновился
+        
+        # 2. Проверяем и устанавливаем базовые пакеты
+        basic_packages = ["virtualenv", "requests", "tqdm", "torch"]
+        missing_packages = []
+        
+        # Сначала проверяем какие пакеты отсутствуют
+        for package in basic_packages:
+            try:
+                __import__(package)
+            except ImportError:
+                missing_packages.append(package)
+        
+        # Если есть отсутствующие пакеты - устанавливаем их
+        if missing_packages:
+            logger.info(f"Требуется установить пакеты: {', '.join(missing_packages)}")
+            for package in missing_packages:
+                try:
+                    subprocess.run([sys.executable, "-m", "pip", "install", package], check=True)
+                except Exception as e:
+                    logger.error(f"Ошибка при установке {package}: {e}")
+                    return False
+                    
+        return True
+        
+    except Exception as e:
+        logger.error(f"Критическая ошибка при установке базовых пакетов: {e}")
+        return False
+
 def select_build_type():
     """Выбор типа сборки"""
     print("\nSelect build type:")
@@ -1019,6 +1058,13 @@ import site'''
 if __name__ == "__main__":
     logger.info("Starting ComfyUI Launcher Portable build...")
     try:
+        # Проверка и установка базовых требований
+        logger.info("Checking prerequisites...")
+        if not check_and_install_prerequisites():
+            logger.error("Failed to install prerequisites!")
+            input("\nPress Enter to exit...")
+            sys.exit(1)
+        
         # Запрашиваем тип сборки
         build_type = select_build_type()
         
